@@ -134,7 +134,25 @@ const defaultFS = () => {
     }
 
     writeStoredJSON(FS_MANIFEST_KEY, manifest);
-    return { root, manifest };
+    
+    // Build the tree structure from the manifest instead of returning empty root
+    const buildNode = (path) => {
+        const nodeDef = manifest?.[path] || { type: "dir", children: [] };
+        if (nodeDef.type === "file") {
+            return createNode("file", {
+                content: readStoredValue(fileStorageKey(path), ""),
+            });
+        }
+
+        const dirNode = createNode("dir", { children: {} });
+        for (const childName of nodeDef.children || []) {
+            const childPath = joinPath(path, childName);
+            dirNode.children[childName] = buildNode(childPath);
+        }
+        return dirNode;
+    };
+
+    return { root: buildNode("/"), manifest };
 };
 
 const buildTreeFromManifest = (manifest) => {
@@ -175,10 +193,22 @@ const buildManifestFromTree = (tree) => {
     return manifest;
 };
 
+const hasStoredDiskState = () => {
+    const raw = readStoredValue(FS_MANIFEST_KEY, null);
+    if (raw === null || raw === undefined || raw === "") return false;
+
+    try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return parsed && typeof parsed === "object" && Object.keys(parsed).length > 0;
+    } catch {
+        return false;
+    }
+};
+
 export function loadDisk() {
     try {
+        if (!hasStoredDiskState()) return { fs: defaultFS(), isNew: true };
         const storedManifest = readStoredJSON(FS_MANIFEST_KEY);
-        if (!storedManifest) return { fs: defaultFS(), isNew: true };
         const fsData = buildTreeFromManifest(storedManifest);
         return { fs: fsData, isNew: false };
     } catch {
