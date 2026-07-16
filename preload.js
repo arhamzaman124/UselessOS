@@ -5,5 +5,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readJSON: (name) => ipcRenderer.sendSync("uselessos:read-json-sync", name),
   writeJSON: (name, value) => ipcRenderer.sendSync("uselessos:write-json-sync", name, value),
   removeJSON: (name) => ipcRenderer.sendSync("uselessos:remove-json-sync", name),
+  readFile: (name) => ipcRenderer.sendSync("uselessos:read-file-sync", name),
+  writeFile: (name, value) => ipcRenderer.sendSync("uselessos:write-file-sync", name, value),
+  removeFile: (name) => ipcRenderer.sendSync("uselessos:remove-file-sync", name),
   getAppDataPath: () => ipcRenderer.sendSync("uselessos:get-app-data-path-sync"),
 });

@@ -24,8 +24,8 @@ if (!gotLock) {
 }
 
 let mainWindow = null;
-const pngIcon = path.join(__dirname, "png", "Drive_White_Stripe_ilbFbWM4mM-512x512x32.png");
-const icnsIcon = path.join(__dirname, "icns", "Drive_White_Stripe_ilbFbWM4mM-0755005eb4.icns");
+const pngIcon = path.join(__dirname, "png", "icon.png");
+const icnsIcon = path.join(__dirname, "icns", "icon.icns");
 
 const { nativeImage } = require("electron");
 
@@ -113,6 +113,50 @@ ipcMain.on("uselessos:write-json-sync", (event, name, value) => {
 ipcMain.on("uselessos:remove-json-sync", (event, name) => {
     try {
         const filePath = path.join(storageDir, name);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+        event.returnValue = true;
+    } catch {
+        event.returnValue = false;
+    }
+});
+
+ipcMain.on("uselessos:read-file-sync", (event, name) => {
+    try {
+        const encoded = encodeURIComponent(name || "");
+        const filePath = path.join(storageDir, encoded);
+        if (!fs.existsSync(filePath)) {
+            event.returnValue = null;
+            return;
+        }
+        const raw = fs.readFileSync(filePath, "utf8");
+        try {
+            event.returnValue = JSON.parse(raw);
+        } catch {
+            event.returnValue = raw;
+        }
+    } catch {
+        event.returnValue = null;
+    }
+});
+
+ipcMain.on("uselessos:write-file-sync", (event, name, value) => {
+    try {
+        const encoded = encodeURIComponent(name || "");
+        const filePath = path.join(storageDir, encoded);
+        const text = typeof value === "string" ? value : JSON.stringify(value);
+        fs.writeFileSync(filePath, text);
+        event.returnValue = true;
+    } catch {
+        event.returnValue = false;
+    }
+});
+
+ipcMain.on("uselessos:remove-file-sync", (event, name) => {
+    try {
+        const encoded = encodeURIComponent(name || "");
+        const filePath = path.join(storageDir, encoded);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }
