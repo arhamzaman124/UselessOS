@@ -1,0 +1,22 @@
+{
+  "name": "uselessos",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "main": "main.js",
+  "build": {
+    "icon": "icns/Drive_White_Stripe_ilbFbWM4mM-0755005eb4.icns"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm --prefix uselessos run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "start": "electron .",
+    "build": "npm --prefix uselessos run build",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
+  }
+}
