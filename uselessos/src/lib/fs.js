@@ -228,8 +228,7 @@ const defaultFS = () => {
         const nodeDef = manifest?.[path] || { type: "dir", children: [] };
         if (nodeDef.type === "file") {
             return createNode("file", {
-                content: readStoredValue(fileStorageKey(path), ""),
-                executable: !!nodeDef.executable,   // <-- added
+                content: readStoredValue(fileStorageKey(path), "")
             });
         }
 
@@ -272,7 +271,6 @@ const buildManifestFromTree = (tree) => {
         manifest[currentPath] = {
             type: node?.type || "dir",
             children,
-            executable: !!node?.executable,   // <-- added
         };
         if (node?.type === "dir") {
             for (const childName of children) {
