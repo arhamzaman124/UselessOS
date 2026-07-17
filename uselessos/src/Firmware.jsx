@@ -32,6 +32,7 @@ const Firmware = ({ onBack }) => {
 
     return (
         <div
+            className="no-select"
             style={{
                 width: "100vw",
                 height: "100vh",

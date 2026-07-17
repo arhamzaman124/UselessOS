@@ -1,6 +1,7 @@
 const DISK_KEY = "uselessos-disk-v1";
 const PATH_KEY = "uselessos-pathmap-v1";
 const BOOT_KEY = "uselessos-bootservices-v1";
+const LIBMAN_KEY = "uselessos-libman-v1";
 const FS_MANIFEST_KEY = "uselessos-fs-manifest-v1";
 
 const getNativeStorage = () => {
@@ -100,10 +101,91 @@ const joinPath = (parent, child) => {
 
 const fileStorageKey = (path) => `fs-file:${encodeURIComponent(normalizePath(path))}`;
 
+// Default library shipped with libman — see 08-imports-libman.md (§12.3).
+const MATH_LIB_SOURCE =
+    "export const PI = 3.141592653589793;\n" +
+    "export const E = 2.718281828459045;\n\n" +
+
+    "export function add(a, b) {\n" +
+    "  return a + b;\n" +
+    "}\n\n" +
+
+    "export function sub(a, b) {\n" +
+    "  return a - b;\n" +
+    "}\n\n" +
+
+    "export function mul(a, b) {\n" +
+    "  return a * b;\n" +
+    "}\n\n" +
+
+    "export function div(a, b) {\n" +
+    "  if (b === 0) throw new Error('Division by zero');\n" +
+    "  return a / b;\n" +
+    "}\n\n" +
+
+    "export function mod(a, b) {\n" +
+    "  return a % b;\n" +
+    "}\n\n" +
+
+    "export function pow(base, exponent) {\n" +
+    "  return base ** exponent;\n" +
+    "}\n\n" +
+
+    "export function sqrt(x) {\n" +
+    "  return Math.sqrt(x);\n" +
+    "}\n\n" +
+
+    "export function abs(x) {\n" +
+    "  return Math.abs(x);\n" +
+    "}\n\n" +
+
+    "export function min(a, b) {\n" +
+    "  return a < b ? a : b;\n" +
+    "}\n\n" +
+
+    "export function max(a, b) {\n" +
+    "  return a > b ? a : b;\n" +
+    "}\n\n" +
+
+    "export function clamp(value, min, max) {\n" +
+    "  if (value < min) return min;\n" +
+    "  if (value > max) return max;\n" +
+    "  return value;\n" +
+    "}\n\n" +
+
+    "export function factorial(n) {\n" +
+    "  if (n < 0) throw new Error('Negative factorial');\n" +
+    "  let result = 1;\n" +
+    "  for (let i = 2; i <= n; i++) result *= i;\n" +
+    "  return result;\n" +
+    "}\n\n" +
+
+    "export function gcd(a, b) {\n" +
+    "  a = Math.abs(a);\n" +
+    "  b = Math.abs(b);\n" +
+    "  while (b !== 0) {\n" +
+    "    const t = b;\n" +
+    "    b = a % b;\n" +
+    "    a = t;\n" +
+    "  }\n" +
+    "  return a;\n" +
+    "}\n\n" +
+
+    "export function lcm(a, b) {\n" +
+    "  return Math.abs(a * b) / gcd(a, b);\n" +
+    "}\n\n" +
+
+    "export function isPrime(n) {\n" +
+    "  if (n < 2) return false;\n" +
+    "  for (let i = 2; i * i <= n; i++) {\n" +
+    "    if (n % i === 0) return false;\n" +
+    "  }\n" +
+    "  return true;\n" +
+    "}\n";
+
 const defaultFS = () => {
-    const root = createNode("dir", { children: {} });
     const manifest = {
-        "/": { type: "dir", children: ["bin", "etc", "home", "var", "tmp"] },
+        "/": { type: "dir", children: ["bin", "etc", "home", "var", "tmp", "useless"] },
         "/bin": { type: "dir", children: [] },
         "/etc": { type: "dir", children: ["motd"] },
         "/etc/motd": { type: "file" },
@@ -113,6 +195,9 @@ const defaultFS = () => {
         "/var": { type: "dir", children: ["log"] },
         "/var/log": { type: "dir", children: [] },
         "/tmp": { type: "dir", children: [] },
+        "/useless": { type: "dir", children: ["lib"] },
+        "/useless/lib": { type: "dir", children: ["math.useless"] },
+        "/useless/lib/math.useless": { type: "file" },
     };
 
     const seedFiles = {
@@ -126,7 +211,10 @@ const defaultFS = () => {
             "  1. echo '...' > hello.useless\n" +
             "  2. chmod +x hello.useless\n" +
             "  3. ./hello.useless\n" +
-            "See 'help' for the full command list.\n",
+            "See 'help' for the full command list.\n\n" +
+            "Libraries: try 'libman list', or `import { add } from \"math\";` in a\n" +
+            ".useless file to pull in /useless/lib/math.useless.\n",
+        [fileStorageKey("/useless/lib/math.useless")]: MATH_LIB_SOURCE,
     };
 
     for (const [key, value] of Object.entries(seedFiles)) {
@@ -134,7 +222,7 @@ const defaultFS = () => {
     }
 
     writeStoredJSON(FS_MANIFEST_KEY, manifest);
-    
+
     // Build the tree structure from the manifest instead of returning empty root
     const buildNode = (path) => {
         const nodeDef = manifest?.[path] || { type: "dir", children: [] };
@@ -156,8 +244,6 @@ const defaultFS = () => {
 };
 
 const buildTreeFromManifest = (manifest) => {
-    const root = createNode("dir", { children: {} });
-
     const buildNode = (path) => {
         const nodeDef = manifest?.[path] || { type: "dir", children: [] };
         if (nodeDef.type === "file") {
@@ -266,7 +352,7 @@ export function resolvePath(cwd, target) {
     return "/" + resolved.join("/");
 }
 
-const getFSRoot = (fs) => (fs && fs.root ? fs.root : fs);
+export const getFSRoot = (fs) => (fs && fs.root ? fs.root : fs);
 const getFSNodes = (fs) => (fs && fs.nodes ? fs.nodes : {});
 
 export function getNode(fs, path) {
@@ -295,6 +381,28 @@ export function getParent(fs, path) {
     return { parent: getNode(fs, parentPath), parentPath, name };
 }
 
+// mkdir -p style helper: walks/creates every intermediate directory from the
+// tree root down to `target`, operating in-place on the (already cloned) fs
+// object passed in. Used by both the `mkdir -p` shell builtin and the
+// scripting File API's mkdir(path) (§11).
+export function ensureDir(fs, target) {
+    const root = getFSRoot(fs);
+    const parts = target.split("/").filter(Boolean);
+    let cursor = root;
+    let builtPath = "";
+    for (const part of parts) {
+        builtPath += "/" + part;
+        if (!cursor.children) cursor.children = {};
+        if (!cursor.children[part]) {
+            cursor.children[part] = { type: "dir", children: {} };
+        } else if (cursor.children[part].type !== "dir") {
+            throw new Error(`cannot create directory '${builtPath}': not a directory`);
+        }
+        cursor = cursor.children[part];
+    }
+    return true;
+}
+
 export function displayPath(path) {
     return path === "/home/user" ? "~" : path.replace(/^\/home\/user/, "~");
 }
@@ -313,6 +421,37 @@ export function loadPathMap() {
 export function savePathMap(map) {
     try {
         writeStoredJSON(PATH_KEY, map);
+    } catch {
+        /* ignore */
+    }
+}
+
+/* ---- libman registry (§12.3) ----
+   Maps a short library name (e.g. "math") to the .useless file that
+   implements it, the same way PATH aliases map a command name to a script,
+   but for importable libraries. Ships with "math" pre-registered. */
+
+export function loadLibMap() {
+    try {
+        const stored = readStoredJSON(LIBMAN_KEY);
+        if (stored && typeof stored === "object" && Object.keys(stored).length > 0) {
+            return stored;
+        }
+    } catch {
+        /* fall through to default */
+    }
+    const defaultMap = { math: "/useless/lib/math.useless" };
+    try {
+        writeStoredJSON(LIBMAN_KEY, defaultMap);
+    } catch {
+        /* ignore */
+    }
+    return defaultMap;
+}
+
+export function saveLibMap(map) {
+    try {
+        writeStoredJSON(LIBMAN_KEY, map);
     } catch {
         /* ignore */
     }
@@ -339,7 +478,7 @@ export function saveBootServices(list) {
 
 /* ---- Backup / restore (.bak) ---- */
 
-export function buildBackup(fs, pathMap, bootServices) {
+export function buildBackup(fs, pathMap, bootServices, libMap) {
     return JSON.stringify(
         {
             format: "uselessos-backup",
@@ -348,6 +487,7 @@ export function buildBackup(fs, pathMap, bootServices) {
             fs,
             pathMap,
             bootServices,
+            libMap,
         },
         null,
         2
@@ -363,5 +503,6 @@ export function parseBackup(text) {
         fs: data.fs,
         pathMap: data.pathMap || {},
         bootServices: data.bootServices || [],
+        libMap: data.libMap || { math: "/useless/lib/math.useless" },
     };
 }

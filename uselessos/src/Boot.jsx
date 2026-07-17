@@ -3,7 +3,7 @@ import "./css/styles.css";
 
 const Boot64 = ({ message = null }) => {
     return (
-        <div className="boot64">
+        <div className="boot64 no-select">
             <div className="boot64-content">
                 <h1 className="boot64-logo">UselessOS</h1>
 
