@@ -37,7 +37,6 @@ const HELP_TEXT = [
     "  mv <src> <dst>           move / rename",
     "  cp <src> <dst>           copy a file",
     "  download <url>           fetch a URL and save it in the current dir",
-    "  chmod +x|-x <file>       mark a file executable / not executable",
     "",
     "Scripting (.useless files):",
     "  ./file.useless [args]    run an executable .useless file",
@@ -603,7 +602,7 @@ export default function Main({ onReboot }) {
         const { parent, name: n } = getParent(working, target);
         if (!parent || parent.type !== "dir") throw new Error(`writeFile: no such directory for '${path}'`);
         const existing = parent.children[n];
-        parent.children[n] = { type: "file", content: String(data), executable: existing?.executable || false };
+        parent.children[n] = { type: "file", content: String(data)};
         setFsBoth(working);
         return true;
     };
@@ -615,7 +614,7 @@ export default function Main({ onReboot }) {
         if (!parent || parent.type !== "dir") throw new Error(`appendFile: no such directory for '${path}'`);
         const existing = parent.children[n];
         const prevContent = existing?.type === "file" ? existing.content || "" : "";
-        parent.children[n] = { type: "file", content: prevContent + String(data), executable: existing?.executable || false };
+        parent.children[n] = { type: "file", content: prevContent + String(data)};
         setFsBoth(working);
         return true;
     };
@@ -980,7 +979,6 @@ export default function Main({ onReboot }) {
             const node = getNode(fsWorking, runTarget);
             if (!node) err(`${name}: no such file or directory`);
             else if (node.type !== "file") err(`${name}: is a directory`);
-            else if (!node.executable) err(`${name}: permission denied (try: chmod +x ${name})`);
             else if (!runTarget.endsWith(".useless")) err(`${name}: cannot execute binary file`);
             else {
                 if (!silent) pushTermLines([promptLine]);
@@ -1029,9 +1027,7 @@ export default function Main({ onReboot }) {
                     const items = names
                         .filter((n) => flags.includes("a") || !n.startsWith("."))
                         .map((n) => ({
-                            name:
-                                n +
-                                (node.children[n].type === "dir" ? "/" : node.children[n].executable ? "*" : ""),
+                            name: n,
                             cls: node.children[n].type === "dir" ? "dir" : "file",
                         }));
                     if (items.length) lines.push({ kind: "ls", items });
@@ -1079,7 +1075,7 @@ export default function Main({ onReboot }) {
                     const target = resolvePath(cwdRef.current, p);
                     const { parent, name: n } = getParent(fsWorking, target);
                     if (!parent) err(`touch: cannot touch '${p}': No such file or directory`);
-                    else if (!parent.children[n]) parent.children[n] = { type: "file", content: "", executable: false };
+                    else if (!parent.children[n]) parent.children[n] = { type: "file", content: "" };
                 }
                 break;
             }
@@ -1115,8 +1111,7 @@ export default function Main({ onReboot }) {
                         const prevContent = append && existing?.type === "file" ? existing.content : "";
                         parent.children[n] = {
                             type: "file",
-                            content: prevContent + (prevContent ? "\n" : "") + text,
-                            executable: existing?.executable || false,
+                            content: prevContent + (prevContent ? "\n" : "") + text
                         };
                     }
                 } else {
@@ -1212,32 +1207,11 @@ export default function Main({ onReboot }) {
                         err("download: cannot write to current directory");
                         break;
                     }
-                    parent.children[n] = { type: "file", content: text, executable: false };
+                    parent.children[n] = { type: "file", content: text };
                     lines.push({ kind: "line", text: `Downloaded '${filename}' (${text.length} bytes) to ${displayPath(cwdRef.current)}` });
                 } catch (e) {
                     err(`download: failed to fetch '${url}': ${e.message} (CORS or network restriction may apply)`);
                 }
-                break;
-            }
-
-            case "chmod": {
-                const flag = args[0];
-                const file = args[1];
-                if (!flag || !file) {
-                    err("chmod: usage: chmod +x <file>");
-                    break;
-                }
-                const target = resolvePath(cwdRef.current, file);
-                const node = getNode(fsWorking, target);
-                if (!node) err(`chmod: cannot access '${file}': No such file or directory`);
-                else if (node.type !== "file") err(`chmod: ${file}: not a regular file`);
-                else if (flag === "+x") {
-                    node.executable = true;
-                    lines.push({ kind: "line", text: `'${file}' is now executable` });
-                } else if (flag === "-x") {
-                    node.executable = false;
-                    lines.push({ kind: "line", text: `'${file}' is no longer executable` });
-                } else err(`chmod: unrecognized flag '${flag}'`);
                 break;
             }
 
