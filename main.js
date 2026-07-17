@@ -170,6 +170,11 @@ ipcMain.on("uselessos:get-app-data-path-sync", (event) => {
     event.returnValue = storageDir;
 });
 
+ipcMain.on("uselessos:shutdown", () => {
+    app.quit();
+    process.exit(0);
+});
+
 app.on("second-instance", () => {
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();

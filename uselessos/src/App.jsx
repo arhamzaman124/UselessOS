@@ -72,12 +72,7 @@ const App = () => {
     const shutdown = () => {
         setShutdownStage(true);
         setTimeout(() => {
-            if (typeof window !== "undefined" && window.close) {
-                window.close();
-            }
-            if (typeof window !== "undefined" && window.location) {
-                window.location.href = "about:blank";
-            }
+            window.electronAPI.shutdown();
         }, 900);
     };
 

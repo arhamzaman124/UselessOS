@@ -1474,12 +1474,9 @@ export default function Main({ onReboot }) {
                 setHistory((h) => [...h, raw]);
                 historyRef.current = [...historyRef.current, raw];
                 await wait(400);
-                if (typeof window !== "undefined" && window.close) {
-                    window.close();
-                }
-                if (typeof window !== "undefined" && window.location) {
-                    window.location.href = "about:blank";
-                }
+                setTimeout(() => {
+                    window.electronAPI.shutdown();
+                }, 1000)
                 return buildExecResult(lines);
 
             case "reset":
