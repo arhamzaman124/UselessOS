@@ -229,6 +229,7 @@ const defaultFS = () => {
         if (nodeDef.type === "file") {
             return createNode("file", {
                 content: readStoredValue(fileStorageKey(path), ""),
+                executable: !!nodeDef.executable,   // <-- added
             });
         }
 
@@ -268,7 +269,11 @@ const buildManifestFromTree = (tree) => {
     const visit = (node, path) => {
         const currentPath = normalizePath(path);
         const children = node?.type === "dir" ? Object.keys(node.children || {}) : [];
-        manifest[currentPath] = { type: node?.type || "dir", children };
+        manifest[currentPath] = {
+            type: node?.type || "dir",
+            children,
+            executable: !!node?.executable,   // <-- added
+        };
         if (node?.type === "dir") {
             for (const childName of children) {
                 visit(node.children[childName], joinPath(currentPath, childName));
