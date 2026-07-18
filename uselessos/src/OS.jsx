@@ -881,7 +881,7 @@ export default function Main({ onReboot }) {
                 name: programName,
                 runner: executeProgram,
             });
-            setOutput((o) => [...o, { kind: "line", text: `${startLabel} '${programName}' [pid ${proc.id}]`, cls: "accent" }]);
+            setOutput((o) => [...o, { kind: "line", text: `${startLabel}`, cls: "accent" }]);
             return proc;
         }
 
