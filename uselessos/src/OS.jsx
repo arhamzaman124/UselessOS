@@ -727,7 +727,7 @@ export default function Main({ onReboot }) {
         const code = node.content || "";
         const argc = argv.length;
         const isBackground = Boolean(opts.background) || /\/\/\s*DEFINE\s+<BACKPROCESS>/i.test(code.split(/\r?\n/)[0] || "");
-        const startLabel = isBackground ? "starting background process" : "running";
+        const startLabel = isBackground ? "starting background process" : "";
         const programName = argv[0] || "program";
         const pid = generatePid();
         const selfPath = opts.filePath || null;
