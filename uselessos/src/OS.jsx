@@ -732,10 +732,6 @@ export default function Main({ onReboot }) {
         const pid = generatePid();
         const selfPath = opts.filePath || null;
 
-        if (opts.fromBoot && !isBackground) {
-            setOutput((o) => [...o, { kind: "line", text: `Starting ${programName}...`, cls: "accent" }]);
-        }
-
         const executeProgram = async () => {
             inProgramExecutionRef.current = true;
             if (!isBackground) foregroundPidRef.current = pid;
@@ -885,7 +881,6 @@ export default function Main({ onReboot }) {
             return proc;
         }
 
-        setOutput((o) => [...o, { kind: "line", text: `${startLabel} '${programName}'`, cls: "accent" }]);
         await executeProgram();
         return null;
     };
@@ -1412,10 +1407,10 @@ export default function Main({ onReboot }) {
                     "user@uselessos",
                     "--------------",
                     "OS: UselessOS 0.9.3",
-                    "Kernel: JS-Kernel/localStorage",
-                    "Shell: fakesh 1.0",
+                    "Kernel: UselessKernel",
+                    "Shell:  Useless 2.2",
                     `Uptime: ${uptimeSec}s`,
-                    `Disk: ${used}K / 5.0M`,
+                    `Disk: ${used}K / Your Disk Storage`,
                     `Services: ${bootServicesWorking.length}`,
                 ];
                 const logo = asciiLogo();
@@ -1613,7 +1608,7 @@ export default function Main({ onReboot }) {
                             return (
                                 <div key={i} className="term-line">
                                     <span className="prompt">
-                                        <span className="prompt-user">user@uselessos</span>
+                                        <span className="prompt-user">user@UselessOS</span>
                                         <span className="prompt-sep">:</span>
                                         <span className="prompt-path">{line.cwd}</span>
                                         <span className="prompt-dollar">$</span>
