@@ -18,6 +18,8 @@ import {
     saveBootServices,
     buildBackup,
     parseBackup,
+    loadUsers,
+    saveUsers,
 } from "./lib/fs";
 import "./css/styles.css";
 
@@ -80,6 +82,12 @@ const HELP_TEXT = [
     "Backups:",
     "  backup save              download a .bak snapshot of the disk",
     "  backup load               pick a .bak file and restore from it",
+    "",
+    "Accounts (simulated):",
+    "  users / id / groups          inspect accounts and identity",
+    "  useradd <name> / userdel <name>  manage users (root only)",
+    "  passwd [name] / su <name> / login <name>  manage or switch sessions",
+    "  sudo <command> [args]        run one utility as root (root password: root)",
     "",
     "System:",
     "  clear / history / whoami / hostname / uname -a / date",
@@ -262,6 +270,16 @@ const findExportedNames = (code) => {
 
 const isLibrarySpecifier = (source) => !(source.startsWith("./") || source.startsWith("../") || source.startsWith("/"));
 
+const UTILITY_NAMES = [
+    "help", "pickup", "pwd", "ls", "cd", "mkdir", "touch", "cat", "echo", "rm", "rmdir", "mv", "cp",
+    "download", "libman", "onbootservices", "backup", "ps", "clear", "history", "whoami",
+    "hostname", "uname", "date", "df", "neofetch", "reboot", "shutdown", "reset", "man",
+    "users", "id", "groups", "useradd", "userdel", "passwd", "su", "login", "logout", "sudo",
+];
+
+const utilitySource = (name) =>
+    `// UselessOS system utility: ${name}\nasync function main(argc, argv) { await utility(${JSON.stringify(name)}, argv.slice(1)); }\n`;
+
 export default function Main({ onReboot }) {
     const [booted, setBooted] = useState(false);
     const [bootedLines, setBootedLines] = useState([]);
@@ -294,6 +312,8 @@ export default function Main({ onReboot }) {
     const pathMapRef = useRef({});
     const libMapRef = useRef({});
     const bootServicesRef = useRef([]);
+    const usersRef = useRef({});
+    const currentUserRef = useRef("user");
     const historyRef = useRef([]);
     const awaitingInputResolveRef = useRef(null);
     const inProgramExecutionRef = useRef(false);
@@ -330,6 +350,28 @@ export default function Main({ onReboot }) {
     const setBootServicesBoth = (next) => {
         bootServicesRef.current = next;
         saveBootServices(next);
+    };
+    const setUsersBoth = (next) => {
+        usersRef.current = next;
+        saveUsers(next);
+    };
+
+    // Install commands as regular, inspectable .useless programs. The host
+    // owns only the tiny `utility()` bridge; this lets users replace a command
+    // with their own script by changing its PATH alias.
+    const installSystemUtilities = (disk, existingPathMap) => {
+        const next = clone(disk);
+        ensureDir(next, "/useless/bin");
+        const bin = getNode(next, "/useless/bin");
+        const aliases = { ...existingPathMap };
+        for (const name of UTILITY_NAMES) {
+            const path = `/useless/bin/${name}.useless`;
+            if (!bin.children[`${name}.useless`]) {
+                bin.children[`${name}.useless`] = { type: "file", content: utilitySource(name) };
+            }
+            if (!aliases[name]) aliases[name] = path;
+        }
+        return { disk: next, aliases };
     };
 
     const generatePid = () => Date.now() + Math.floor(Math.random() * 1000);
@@ -402,8 +444,11 @@ export default function Main({ onReboot }) {
     const runBoot = useCallback(async () => {
         setBooted(false);
         setBootedLines([]);
-        const { fs: loadedFs, isNew } = loadDisk();
-        const loadedPathMap = loadPathMap();
+        const { fs: rawFs } = loadDisk();
+        const initialPathMap = loadPathMap();
+        const installed = installSystemUtilities(rawFs, initialPathMap);
+        const loadedFs = installed.disk;
+        const loadedPathMap = installed.aliases;
         const loadedLibMap = loadLibMap();
         const loadedBootServices = loadBootServices();
 
@@ -412,6 +457,8 @@ export default function Main({ onReboot }) {
         pathMapRef.current = loadedPathMap;
         libMapRef.current = loadedLibMap;
         bootServicesRef.current = loadedBootServices;
+        usersRef.current = loadUsers();
+        currentUserRef.current = "user";
         envRef.current = { HOME: "/home/user", USER: "user" };
         signalHandlersRef.current = new Map();
         pendingInterruptRef.current = new Map();
@@ -419,6 +466,8 @@ export default function Main({ onReboot }) {
         foregroundPidRef.current = null;
 
         setFs(loadedFs);
+        saveDisk(loadedFs);
+        savePathMap(loadedPathMap);
         setCwd("/home/user");
         setOutput([
             { kind: "line", text: getNode(loadedFs, "/etc/motd")?.content?.trim() || "" },
@@ -814,6 +863,8 @@ export default function Main({ onReboot }) {
                 mkdir: apiMkdir,
                 remove: apiRemove,
                 listDir: apiListDir,
+                utility: async (name, args = []) =>
+                    execute(`__utility ${String(name)} ${Array.from(args).map(String).join(" ")}`),
             };
 
             try {
@@ -943,8 +994,16 @@ export default function Main({ onReboot }) {
         }
 
         const tokens = trimmed.split(/\s+/);
-        const name = tokens[0];
-        const args = tokens.slice(1);
+        let name = tokens[0];
+        let args = tokens.slice(1);
+        // Internal calls originate exclusively in the installed .useless
+        // utilities. They bypass PATH so a utility does not recurse into its
+        // own wrapper when it delegates to the small kernel bridge.
+        const isUtilityBridge = name === "__utility";
+        if (isUtilityBridge) {
+            name = args[0] || "";
+            args = args.slice(1);
+        }
 
         let fsWorking = clone(fsRef.current);
         let pathMapWorking = { ...pathMapRef.current };
@@ -964,9 +1023,9 @@ export default function Main({ onReboot }) {
 
         // ---- executable dispatch: ./file, /abs/path, or PATH alias ----
         let runTarget = null;
-        if (name.startsWith("./") || name.startsWith("/")) {
+        if (!isUtilityBridge && (name.startsWith("./") || name.startsWith("/"))) {
             runTarget = resolvePath(cwdRef.current, name);
-        } else if (pathMapWorking[name]) {
+        } else if (!isUtilityBridge && pathMapWorking[name]) {
             runTarget = pathMapWorking[name];
         }
 
@@ -1363,8 +1422,96 @@ export default function Main({ onReboot }) {
                 break;
 
             case "whoami":
-                lines.push({ kind: "line", text: "user" });
+                lines.push({ kind: "line", text: currentUserRef.current });
                 break;
+
+            case "users":
+                lines.push({ kind: "line", text: Object.keys(usersRef.current).sort().join("\n") });
+                break;
+
+            case "id": {
+                const account = usersRef.current[currentUserRef.current];
+                lines.push({ kind: "line", text: `uid=${account?.uid ?? 1000}(${currentUserRef.current}) groups=${(account?.groups || ["users"]).join(",")}` });
+                break;
+            }
+
+            case "groups": {
+                const target = args[0] || currentUserRef.current;
+                const account = usersRef.current[target];
+                if (!account) err(`groups: '${target}': no such user`);
+                else lines.push({ kind: "line", text: account.groups.join(" ") });
+                break;
+            }
+
+            case "useradd": {
+                if (currentUserRef.current !== "root") { err("useradd: permission denied (use sudo)"); break; }
+                const username = args[0];
+                if (!username || !/^[a-z_][a-z0-9_-]*$/i.test(username)) { err("useradd: invalid username"); break; }
+                if (usersRef.current[username]) { err(`useradd: user '${username}' already exists`); break; }
+                const users = clone(usersRef.current);
+                const uid = Math.max(...Object.values(users).map((u) => u.uid || 1000)) + 1;
+                users[username] = { password: args[1] || username, uid, groups: ["users"], home: `/home/${username}` };
+                ensureDir(fsWorking, `/home/${username}`);
+                getNode(fsWorking, `/home/${username}`).children["welcome.txt"] = { type: "file", content: `Welcome, ${username}. Your UselessOS home directory is ready.\n` };
+                setUsersBoth(users);
+                lines.push({ kind: "line", text: `Created user '${username}' with home /home/${username}.` });
+                break;
+            }
+
+            case "userdel": {
+                if (currentUserRef.current !== "root") { err("userdel: permission denied (use sudo)"); break; }
+                const username = args[0];
+                if (!username || username === "root" || username === "user" || !usersRef.current[username]) { err("userdel: refusing to remove protected or unknown user"); break; }
+                const users = clone(usersRef.current); delete users[username]; setUsersBoth(users);
+                lines.push({ kind: "line", text: `Removed user '${username}' (home directory retained).` });
+                break;
+            }
+
+            case "passwd": {
+                const target = args.length > 1 ? args[0] : currentUserRef.current;
+                const password = args.length > 1 ? args[1] : args[0];
+                if (!usersRef.current[target]) { err(`passwd: user '${target}' does not exist`); break; }
+                if (target !== currentUserRef.current && currentUserRef.current !== "root") { err("passwd: permission denied"); break; }
+                if (!password) { err("passwd: usage: passwd [user] <new-password>"); break; }
+                const users = clone(usersRef.current); users[target].password = password; setUsersBoth(users);
+                lines.push({ kind: "line", text: `Password updated for ${target}.` });
+                break;
+            }
+
+            case "su":
+            case "login": {
+                const username = args[0]; const password = args[1]; const account = usersRef.current[username];
+                if (!account) { err(`${name}: unknown user '${username || ""}'`); break; }
+                if (currentUserRef.current !== "root" && password !== account.password) { err(`${name}: authentication failure (provide password as second argument)`); break; }
+                currentUserRef.current = username;
+                envRef.current = { ...envRef.current, USER: username, HOME: account.home };
+                newCwd = account.home;
+                lines.push({ kind: "line", text: `Now acting as ${username}.` });
+                break;
+            }
+
+            case "logout": {
+                const account = usersRef.current.user;
+                currentUserRef.current = "user"; envRef.current = { HOME: account.home, USER: "user" }; newCwd = account.home;
+                lines.push({ kind: "line", text: "Logged out; returned to user." });
+                break;
+            }
+
+            case "sudo": {
+                const caller = currentUserRef.current;
+                const account = usersRef.current[caller];
+                const command = args[0];
+                if (!command) { err("sudo: usage: sudo <command> [args]"); break; }
+                if (caller !== "root" && !(account?.groups || []).includes("wheel")) { err(`${caller} is not in the sudoers file.`); break; }
+                currentUserRef.current = "root";
+                envRef.current = { ...envRef.current, USER: "root", HOME: "/root" };
+                const result = await runCommandLine(`__utility ${command} ${args.slice(1).join(" ")}`, { silent: true });
+                currentUserRef.current = caller;
+                envRef.current = { ...envRef.current, USER: caller, HOME: account?.home || "/home/user" };
+                lines.push(...result.stdout.split("\n").filter(Boolean).map((text) => ({ kind: "line", text })));
+                if (result.stderr) lines.push(...result.stderr.split("\n").map((text) => ({ kind: "line", text, cls: "err" })));
+                break;
+            }
 
             case "hostname":
                 lines.push({ kind: "line", text: "uselessos" });

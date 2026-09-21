@@ -3,6 +3,24 @@ const PATH_KEY = "uselessos-pathmap-v1";
 const BOOT_KEY = "uselessos-bootservices-v1";
 const LIBMAN_KEY = "uselessos-libman-v1";
 const FS_MANIFEST_KEY = "uselessos-fs-manifest-v1";
+const USERS_KEY = "uselessos-users-v1";
+
+// Accounts are deliberately stored with the virtual disk rather than using
+// the host OS.  Passwords are a simulation feature, not real credentials.
+export const defaultUsers = () => ({
+    root: { password: "root", uid: 0, groups: ["root", "wheel"], home: "/root" },
+    user: { password: "user", uid: 1000, groups: ["users", "wheel"], home: "/home/user" },
+});
+
+export function loadUsers() {
+    const users = readStoredJSON(USERS_KEY);
+    if (users && typeof users === "object" && users.root && users.user) return users;
+    const defaults = defaultUsers();
+    writeStoredJSON(USERS_KEY, defaults);
+    return defaults;
+}
+
+export function saveUsers(users) { writeStoredJSON(USERS_KEY, users); }
 
 const getNativeStorage = () => {
     if (typeof window !== "undefined" && window.electronAPI?.hasNativeStorage) {
@@ -185,18 +203,20 @@ const MATH_LIB_SOURCE =
 
 const defaultFS = () => {
     const manifest = {
-        "/": { type: "dir", children: ["bin", "etc", "home", "var", "tmp", "useless"] },
+        "/": { type: "dir", children: ["bin", "etc", "home", "root", "var", "tmp", "useless"] },
         "/bin": { type: "dir", children: [] },
         "/etc": { type: "dir", children: ["motd"] },
         "/etc/motd": { type: "file" },
         "/home": { type: "dir", children: ["user"] },
         "/home/user": { type: "dir", children: ["readme.txt"] },
+        "/root": { type: "dir", children: [] },
         "/home/user/readme.txt": { type: "file" },
         "/var": { type: "dir", children: ["log"] },
         "/var/log": { type: "dir", children: [] },
         "/tmp": { type: "dir", children: [] },
-        "/useless": { type: "dir", children: ["lib"] },
+        "/useless": { type: "dir", children: ["lib", "bin"] },
         "/useless/lib": { type: "dir", children: ["math.useless"] },
+        "/useless/bin": { type: "dir", children: [] },
         "/useless/lib/math.useless": { type: "file" },
     };
 
@@ -341,9 +361,11 @@ export function resolvePath(cwd, target) {
     if (!target) return cwd;
     let parts;
     if (target.startsWith("/")) parts = target.split("/").filter(Boolean);
-    else if (target === "~") parts = ["home", "user"];
-    else if (target.startsWith("~/"))
-        parts = ("home/user/" + target.slice(2)).split("/").filter(Boolean);
+    else if (target === "~") parts = (cwd === "/root" ? "/root" : (cwd.match(/^\/home\/[^/]+/) || ["/home/user"])[0]).split("/").filter(Boolean);
+    else if (target.startsWith("~/")) {
+        const home = cwd === "/root" ? "/root" : (cwd.match(/^\/home\/[^/]+/) || ["/home/user"])[0];
+        parts = (home + "/" + target.slice(2)).split("/").filter(Boolean);
+    }
     else parts = (cwd + "/" + target).split("/").filter(Boolean);
 
     const resolved = [];
@@ -407,7 +429,8 @@ export function ensureDir(fs, target) {
 }
 
 export function displayPath(path) {
-    return path === "/home/user" ? "~" : path.replace(/^\/home\/user/, "~");
+    if (path === "/root") return "~";
+    return path.replace(/^(\/home\/[^/]+)/, "~");
 }
 
 /* ---- PATH alias registry ---- */
